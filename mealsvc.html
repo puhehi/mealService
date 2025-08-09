@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>급식 정보 알리미 (정상 작동 버전)</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap');
+
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #f8f9fa;
+            color: #343a40;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .container {
+            background-color: #ffffff;
+            padding: 30px 40px;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h1 {
+            font-size: 26px;
+            color: #2c3e50;
+            margin-bottom: 25px;
+        }
+
+        .input-group {
+            margin-bottom: 25px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #datePicker {
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 16px;
+            font-family: 'Noto Sans KR', sans-serif;
+            cursor: pointer;
+        }
+
+        #fetchBtn {
+            padding: 10px 20px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s, opacity 0.3s;
+            font-weight: bold;
+        }
+
+        #fetchBtn:hover {
+            background-color: #0056b3;
+        }
+        
+        #fetchBtn:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        
+        #loading {
+            display: none;
+            margin-top: 20px;
+            font-size: 16px;
+            color: #6c757d;
+        }
+
+        #meal-info {
+            margin-top: 20px;
+            text-align: left;
+            list-style: none;
+            padding: 0;
+        }
+
+        .meal-card {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border-left: 5px solid #007bff;
+        }
+
+        .meal-card h3 {
+            margin-top: 0;
+            color: #0056b3;
+            font-size: 19px;
+            border-bottom: 2px solid #e9ecef;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .meal-card ul {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 10px 0;
+        }
+
+        .meal-card li {
+            font-size: 16px;
+            line-height: 1.7;
+            padding: 4px 0;
+        }
+        
+        .meal-card .calories {
+            text-align: right;
+            font-size: 14px;
+            color: #6c757d;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .error-message {
+            color: #dc3545;
+            font-weight: bold;
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8d7da;
+            border-radius: 8px;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>급식 정보 조회</h1>
+        <div class="input-group">
+            <input type="date" id="datePicker">
+            <button id="fetchBtn">조회하기</button>
+        </div>
+        <div id="loading">급식 정보를 불러오는 중...</div>
+        <div id="meal-info"></div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const datePicker = document.getElementById('datePicker');
+            const fetchBtn = document.getElementById('fetchBtn');
+            const mealInfoDiv = document.getElementById('meal-info');
+            const loadingDiv = document.getElementById('loading');
+
+            // 페이지가 열리면 오늘 날짜로 기본 설정하고 급식 정보를 바로 조회
+            datePicker.value = new Date().toISOString().split('T')[0];
+            fetchMealInfo();
+
+            fetchBtn.addEventListener('click', fetchMealInfo);
+            datePicker.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    fetchMealInfo();
+                }
+            });
+
+            function fetchMealInfo() {
+                const selectedDate = datePicker.value;
+                if (!selectedDate) {
+                    alert('날짜를 선택해주세요.');
+                    return;
+                }
+
+                const formattedDate = selectedDate.replace(/-/g, '');
+                const ATPT_OFCDC_SC_CODE = 'T10'; // 서울특별시교육청
+                const SD_SCHUL_CODE = '9290083'; // 예시 학교 코드
+                
+                const neisApiUrl = `https://open.neis.go.kr/hub/mealServiceDietInfo?ATPT_OFCDC_SC_CODE=${ATPT_OFCDC_SC_CODE}&SD_SCHUL_CODE=${SD_SCHUL_CODE}&MLSV_YMD=${formattedDate}`;
+
+                // [핵심] CORS 문제를 해결하기 위한 안정적인 프록시 서버 사용
+                const proxyUrl = `https://worker-frosty-sun-62c2.bigwin.workers.dev/?url=${encodeURIComponent(neisApiUrl)}`;
+
+                mealInfoDiv.innerHTML = '';
+                loadingDiv.style.display = 'block';
+                fetchBtn.disabled = true;
+
+                fetch(proxyUrl)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.text();
+                })
+                .then(xmlString => {
+                    const parser = new window.DOMParser();
+                    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+
+                    const resultCode = xmlDoc.querySelector('CODE');
+                    if (resultCode && resultCode.textContent.includes('INFO-200')) {
+                        throw new Error('no-data');
+                    }
+                    if(resultCode && !resultCode.textContent.includes('INFO-000')) {
+                        const message = xmlDoc.querySelector('MESSAGE').textContent;
+                        throw new Error(message);
+                    }
+
+                    const mealRows = xmlDoc.querySelectorAll('row');
+                    if (mealRows.length === 0) {
+                        throw new Error('no-data');
+                    }
+
+                    const sortedMealRows = Array.from(mealRows).sort((a, b) => {
+                        const mealA = a.querySelector('MMEAL_SC_CODE').textContent;
+                        const mealB = b.querySelector('MMEAL_SC_CODE').textContent;
+                        return mealA.localeCompare(mealB);
+                    });
+
+                    let mealHtml = '';
+                    sortedMealRows.forEach(row => {
+                        const mealType = row.querySelector('MMEAL_SC_NM').textContent;
+                        const dishesText = row.querySelector('DDISH_NM').textContent;
+                        const calories = row.querySelector('CAL_INFO').textContent;
+                        
+                        const cleanedDishes = dishesText.replace(/\s*\([\d\.]+\)/g, '').trim();
+                        const dishItems = cleanedDishes.split('<br/>').map(item => `<li>${item.trim()}</li>`).join('');
+
+                        mealHtml += `
+                            <div class="meal-card">
+                                <h3>${mealType}</h3>
+                                <ul>${dishItems}</ul>
+                                <p class="calories">${calories}</p>
+                            </div>
+                        `;
+                    });
+                    mealInfoDiv.innerHTML = mealHtml;
+                })
+                .catch(error => {
+                    if (error.message === 'no-data') {
+                        mealInfoDiv.innerHTML = '<p class="error-message">해당 날짜의 급식 정보가 없습니다.</p>';
+                    } else {
+                         mealInfoDiv.innerHTML = `<p class="error-message">데이터를 불러오는 데 실패했습니다.</p>`;
+                    }
+                    console.error('오류 발생:', error);
+                })
+                .finally(() => {
+                    loadingDiv.style.display = 'none';
+                    fetchBtn.disabled = false;
+                });
+            }
+        });
+    </script>
+</body>
+</html>
